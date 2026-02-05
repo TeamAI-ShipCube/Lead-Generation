@@ -1,106 +1,93 @@
-# TestScout - Ready to Ship Package
+# Lead Generation Engine (GCP)
 
-## ✅ One-Command Docker Run
+## Overview
+This repository contains the **Shipcube Lead Generation Engine**, a cloud-native system designed to automatically discover, qualify, and store potential B2B leads for logistics and 3PL outreach.
 
-### For Windows:
-```batch
-run-docker.bat
-```
+The solution has been fully migrated from a local Python scraper to a **Google Cloud Run Job–based architecture**, removing laptop dependency and enabling scheduled, scalable execution.
 
-### For Mac/Linux:
+The engine identifies e-commerce and DTC brands, analyzes their business signals, extracts decision-maker information, and optionally syncs qualified leads to **Google Sheets** for sales consumption.
+
+---
+
+## What This System Does
+1. Discovers companies using Google Custom Search (brand, DTC, Shopify, category-based queries)
+2. Scrapes and analyzes company websites (About, Team, Products)
+3. Identifies potential logistics or scaling signals
+4. Extracts contact and LinkedIn information (when available)
+5. Scores and qualifies leads
+6. Stores outputs as CSV and optionally syncs to Google Sheets
+7. Runs fully automated on Google Cloud Run (on-demand or scheduled)
+
+---
+
+## Types of Leads Extracted
+- E-commerce / DTC brands  
+- Shopify-based stores  
+- Consumer goods, food, fitness, fashion, accessories  
+- Companies showing growth or scaling friction  
+- Businesses likely to need 3PL / fulfillment services  
+
+---
+
+## Lead Data Fields
+Each lead typically includes:
+1. Company name  
+2. Website  
+3. Category / industry  
+4. Business description  
+5. Qualification score  
+6. Identified pain point or opportunity  
+7. Contact person (when available)  
+8. LinkedIn profile  
+9. Outreach suggestion  
+
+---
+
+## Tech Stack
+- Python 3.12  
+- Google Cloud Run (Jobs)  
+- Google Cloud Build  
+- Google Secret Manager  
+- Google Custom Search API  
+- Google Sheets API  
+- Docker  
+- GitHub (TeamAI organization)  
+
+---
+
+## Authentication & Security Model
+- No service account JSON files are committed  
+- Cloud Run uses IAM-based authentication  
+- API keys (Google Search, etc.) are stored in Secret Manager  
+- Environment variables are injected at runtime  
+- Google Sheets access is granted by sharing the sheet with the Cloud Run service account  
+
+---
+
+## Required Environment Variables
+Configured directly on the Cloud Run Job:
+
+- `GOOGLE_SEARCH_API_KEY` (via Secret Manager)  
+- `GOOGLE_SEARCH_CX_COMPANIES`  
+- `GOOGLE_SEARCH_CX_PEOPLE`  
+- `GOOGLE_CLOUD_PROJECT`  
+- `GOOGLE_CLOUD_LOCATION`  
+- `ENABLE_SHEETS_SYNC`  
+- `GOOGLE_SHEET_ID`  
+
+---
+
+## Cloud Run Job Management
+
+### Update Environment Variables & Secrets
 ```bash
-./run-docker.sh
-```
-
-That's it! Everything else is pre-configured.
-
----
-
-## 📦 What's Included
-
-✅ **Complete Application**
-- All Python modules
-- Google Sheets auto-sync (enabled)
-- Email verification
-- AI lead analysis
-
-✅ **Docker Setup**
-- Dockerfile with all dependencies
-- docker-compose for easy orchestration
-- One-command run scripts
-
-✅ **Pre-Configured**
-- `.env` with your API keys
-- `google-credentials.json`
-- Sample ICPs ready to use
-- Google Sheet connected
-
-✅ **Documentation**
-- Windows quick start guide
-- Complete Docker guide
-- User manual
-- Technical documentation
-- FAQ
-
----
-
-## 🚀 For Your Teammate
-
-**Send them this package. They do:**
-
-1. Install Docker Desktop (10 mins, one-time)
-2. Extract package anywhere
-3. Run: `run-docker.bat`
-
-**Done!** Leads start generating and syncing to Google Sheets.
-
----
-
-## 📊 Live Lead Tracking
-
-Google Sheet (auto-updates):  
-https://docs.google.com/spreadsheets/d/1u5RKbVgskn7LgWJ1Km3jrUl9haqocRlRAE-fpt87lIc/edit
-
-Every lead appears here automatically!
-
----
-
-## ⚙️ Current Setup
-
-- **Target:** 10,000 leads (continuous)
-- **Quality:** All grades (0+)
-- **Sheets Sync:** ✅ Enabled
-- **ICPs:** 2 active (Furniture/Electronics + International)
-
----
-
-## 📁 Key Files
-
-| File | Purpose |
-|------|---------|
-| `run-docker.bat` / `run-docker.sh` | **START HERE** |
-| `Input_ICP.csv` | Edit to change target customers |
-| `.env` | API keys (pre-configured) |
-| `WINDOWS_QUICKSTART.md` | 5-min guide for Windows |
-| `docs/` | Full documentation |
-
----
-
-## 💡 Quick Tips
-
-**Stop pipeline:**  
-Press `Ctrl+C`
-
-**View leads:**  
-Open Google Sheet or `Master_Leads.csv`
-
-**Change targets:**  
-Edit `Input_ICP.csv`, no code changes needed
-
-**Support:**  
-See `docs/FAQ.md`
-
----
-
-*Package created: January 21, 2026*  
-*Includes: Code + Credentials + Docker + Live Google Sheets*
+gcloud run jobs update shipcube-lead-gen \
+  --region us-central1 \
+  --set-env-vars \
+ENABLE_SHEETS_SYNC=true,\
+GOOGLE_SHEET_ID=<SHEET_ID>,\
+GOOGLE_SEARCH_CX_COMPANIES=<CX_ID>,\
+GOOGLE_SEARCH_CX_PEOPLE=<CX_ID>,\
+GOOGLE_CLOUD_PROJECT=<PROJECT_ID>,\
+GOOGLE_CLOUD_LOCATION=us-central1 \
+  --set-secrets GOOGLE_SEARCH_API_KEY=google-search-api-key:latest
