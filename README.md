@@ -91,3 +91,7 @@ GOOGLE_SEARCH_CX_PEOPLE=<CX_ID>,\
 GOOGLE_CLOUD_PROJECT=<PROJECT_ID>,\
 GOOGLE_CLOUD_LOCATION=us-central1 \
   --set-secrets GOOGLE_SEARCH_API_KEY=google-search-api-key:latest
+
+To Run the job
+gcloud run jobs execute shipcube-lead-gen --region us-central1
+
