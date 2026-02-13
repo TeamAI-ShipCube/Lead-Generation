@@ -82,6 +82,26 @@ Analysis Matrix:
 
 Return ONLY the JSON.
 """
+def safe_extract_json(response_text):
+    """
+    Helper to clean markdown and handle both dict/list returns from LLM.
+    """
+    try:
+        text = response_text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.endswith("```"):
+            text = text[:-3]
+        
+        data = json.loads(text)
+        
+        # If LLM returns a list [{}], extract the first dictionary
+        if isinstance(data, list) and len(data) > 0:
+            return data[0]
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logging.error(f"JSON Parsing failed: {e}")
+        return {}
 
 def analyze_lead(company_name, website_text, decision_maker_info):
     """
@@ -113,19 +133,7 @@ def analyze_lead(company_name, website_text, decision_maker_info):
         )
         
         if response.text:
-            text = response.text.strip()
-            # Clean potential markdown
-            if text.startswith("```json"):
-                text = text[7:]
-            if text.endswith("```"):
-                text = text[:-3]
-            data = json.loads(text)
-            if isinstance(data, list):
-                if data:
-                    data = data[0] # Take first item if list
-                else:
-                    return None
-            return data
+            return safe_extract_json(response.text)
         
     except Exception as e:
         logging.error(f"Vertex AI analysis failed: {e}")
@@ -141,8 +149,7 @@ def clean_name_with_vertex(raw_name, strict=False):
         
     prompt = f"""
     You are a data cleaning assistant.
-    Task: Analyze the Google Search Title and extract the Company Name.
-    
+    Task: "Analyze and extract company name from: {raw_name}. Return JSON: {{'company_name': 'string', 'is_company': boolean}}"
     Input Title: "{raw_name}"
     
     Rules:
@@ -169,7 +176,7 @@ def clean_name_with_vertex(raw_name, strict=False):
             generation_config={"response_mime_type": "application/json"}
         )
         if response.text:
-            data = json.loads(response.text)
+            data = safe_extract_json(response.text)
             is_company = data.get("is_company", True)
             name = data.get("company_name", "").strip()
             
@@ -228,7 +235,7 @@ def extract_contacts_from_text(text, company_name=""):
             generation_config={"response_mime_type": "application/json"}
         )
         if response.text:
-            data = json.loads(response.text)
+            data = safe_extract_json(response.text)
             if data.get("first_name"):
                 first = (data.get("first_name") or "").strip()
                 last = (data.get("last_name") or "").strip()
@@ -332,17 +339,10 @@ def generate_keywords_from_icp(icp_row, variation_seed=None):
             generation_config={"response_mime_type": "application/json"}
         )
         if response.text:
-            text = response.text.strip()
-            # Clean markdown
-            if text.startswith("```json"):
-                text = text[7:]
-            if text.endswith("```"):
-                text = text[:-3]
-                
-            data = json.loads(text)
+            data = safe_extract_json(response.text)
             keywords = data.get("keywords", [])
             logging.info(f"Vertex Generated {len(keywords)} keywords for ICP: {industry}")
-            return keywords
+            return data.get("keywords", [])
             
     except Exception as e:
         logging.error(f"Vertex Keyword Gen failed: {e}")

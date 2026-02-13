@@ -5,95 +5,38 @@ from urllib.parse import urlparse
 from .config import GOOGLE_SEARCH_API_KEY, GOOGLE_SEARCH_CX_PEOPLE
 from googleapiclient.discovery import build
 
-def is_valid_linkedin_url(url, person_name=None):
-    """
-    DEEP validation of LinkedIn URL:
-    1. Checks URL format
-    2. Verifies page is accessible (200 status)
-    3. Confirms content indicates it's a profile page
-    4. Optionally verifies person's name appears on the page
-    """
+BAD_DOMAIN_KEYWORDS = [
+    "godaddy",
+    "sedo",
+    "dan.com",
+    "parking",
+    "domains",
+    "registry"
+]
+def is_valid_linkedin_url(url):
+    """Validate LinkedIn profile URL structure only."""
     if not url:
         return False
-    
+
     try:
         parsed = urlparse(url)
-        
-        # Step 1: URL Format Validation
-        # Must be linkedin.com domain
-        if 'linkedin.com' not in parsed.netloc.lower():
+
+        if "linkedin.com" not in parsed.netloc.lower():
             return False
-        
-        # Must have /in/ path (profile URL)
-        if '/in/' not in parsed.path.lower():
+
+        if "/in/" not in parsed.path.lower():
             return False
-        
-        # Must not be a company page
-        if '/company/' in parsed.path.lower():
-            logging.warning(f"LinkedIn URL is a company page, not a profile: {url}")
+
+        if "/company/" in parsed.path.lower():
             return False
-        
-        # Must not be a directory/search page
-        invalid_paths = ['/directory/', '/search/', '/pub/dir/', '/learning/', '/404']
-        if any(path in parsed.path.lower() for path in invalid_paths):
+
+        bad_paths = ["/posts/", "/feed/", "/pulse/", "/events/", "/directory/"]
+        if any(p in parsed.path.lower() for p in bad_paths):
             return False
-        
-        # Step 2: Content Validation (verify page exists and is legit)
-        try:
-            # Use Jina AI to quickly fetch LinkedIn page (bypasses login wall)
-            jina_url = f"https://r.jina.ai/{url}"
-            headers = {
-                "X-Return-Format": "text",
-                "User-Agent": "Mozilla/5.0 (compatible; LeadBot/1.0)"
-            }
-            
-            response = requests.get(jina_url, headers=headers, timeout=10)
-            
-            # Check if page is accessible
-            if response.status_code != 200:
-                logging.warning(f"LinkedIn URL returned {response.status_code}: {url}")
-                return False
-            
-            page_text = response.text.lower()
-            
-            # Step 3: Verify it's actually a profile page (not 404 or error)
-            # LinkedIn profiles have these indicators
-            profile_indicators = ['linkedin', 'profile', 'experience', 'education']
-            
-            # Must have at least 2 profile indicators
-            indicator_count = sum(1 for indicator in profile_indicators if indicator in page_text)
-            
-            if indicator_count < 2:
-                logging.warning(f"LinkedIn URL rejected (low confidence/login wall): {url} (Indicators: {indicator_count})")
-                return False
-            
-            # Step 4: Verify person's name appears (if provided)
-            # RELAXED: Require at least 1 part match (first OR last) instead of 2 to handle nicknames/variations
-            if person_name:
-                name_parts = person_name.lower().split()
-                
-                # Check for matches
-                name_matches = sum(1 for part in name_parts if len(part) > 2 and part in page_text)
-                
-                # Validation: At least 1 part must match (e.g. "John" found in "John Smith")
-                # This catches "Wrong Person" but allows "Jon" vs "Jonathan" if last name matches
-                if name_matches < 1:
-                     logging.warning(f"LinkedIn rejection: Name '{person_name}' not found content of {url}")
-                     return False
-            
-            logging.info(f"✓ LinkedIn URL validated: {url}")
-            return True
-            
-        except requests.exceptions.Timeout:
-            logging.warning(f"LinkedIn URL validation timeout: {url} - ALLOWING (Benefit of Doubt)")
-            return True
-            
-        except Exception as e:
-            logging.warning(f"LinkedIn URL content check failed: {url} - {e} - ALLOWING (Benefit of Doubt)")
-            return True
-        
-    except Exception as e:
-        logging.error(f"Error validating LinkedIn URL {url}: {e}")
+
+        return True
+
+    except:
         return False
 
 def is_valid_company_url(url):
@@ -130,43 +73,24 @@ def get_domain_from_url(url):
     domain = urlparse(url).netloc.replace("www.", "")
     return domain
 
+
 def is_valid_name(name):
-    """
-    Validate if a name is specific enough (not vague like 'Executives ...' or company names).
-    """
-    if not name or len(name) < 3:
+    """Ensure name is realistic person name."""
+    if not name or len(name.split()) < 2:
         return False
-    
-    # Reject vague/generic names
-    vague_keywords = [
-        'executives', 'team', 'staff', 'member', '...', 'professional', 'profile',
-        'linkedin', 'company', 'corporation', 'inc', 'llc', 'ltd',
-        'cookies', 'sweets', 'shop', 'store', 'bakery',  # Common business words
-        'and', '&', 'associates'
-    ]
-    name_lower = name.lower()
-    
-    # Check if name contains any vague keywords
-    if any(keyword in name_lower for keyword in vague_keywords):
-        return False
-    
-    # Reject if name has more than 4 words (likely a title/description)
+
     if len(name.split()) > 4:
         return False
-    
-    # Reject single-word names (likely company names)
-    if len(name.split()) == 1:
+
+    invalid_keywords = [
+        "linkedin", "company", "team", "staff",
+        "executives", "profile", "member"
+    ]
+
+    name_lower = name.lower()
+    if any(word in name_lower for word in invalid_keywords):
         return False
-    
-    # Check if name has proper format (First Last or First Middle Last)
-    words = name.split()
-    if len(words) < 2:
-        return False
-    
-    # Reject if first or last name is too short (likely initials or abbreviations)
-    if len(words[0]) < 2 or len(words[-1]) < 2:
-        return False
-    
+
     return True
 
 def execute_search_strategy(service, query, domain, strategy_name):
@@ -198,7 +122,7 @@ def execute_search_strategy(service, query, domain, strategy_name):
                 continue
             
             # 3. Validate LinkedIn URL (with benefit of doubt/snippet trust)
-            if not linkedin_url or not is_valid_linkedin_url(linkedin_url, person_name=name):
+            if not linkedin_url or not is_valid_linkedin_url(linkedin_url):
                 logging.info(f"Strategy [{strategy_name}] skipped invalid URL/Name mismatch: {name}")
                 continue
                 
@@ -226,34 +150,48 @@ def execute_search_strategy(service, query, domain, strategy_name):
     return None
 
 def search_with_linkedin_xray_by_domain(domain):
-    """
-    Multi-Strategy LinkedIn X-Ray search by domain.
-    Tries 3 distinct queries to maximize chances of finding a POC.
-    """
+
     if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_CX_PEOPLE:
         return None
-        
+
     service = build("customsearch", "v1", developerKey=GOOGLE_SEARCH_API_KEY)
-    
-    # Define Strategies
+
+    company_token = domain.split(".")[0]
+
     strategies = [
-        # Strategy 1: Broad Leadership (Founders/Owners are best for SMBs)
-        (f'{domain} (Founder OR CEO OR Owner OR Principal)', "Exec Leadership"),
-        
-        # Strategy 2: Ops & Logistics (CRITICAL for shipping deals)
-        (f'{domain} ("Head of Operations" OR "Director of Operations" OR "Logistics Manager" OR "Supply Chain Director" OR "Warehouse Manager")', "Logistics/Ops"),
-        
-        # Strategy 3: General Senior Mgmt (Fallback)
-        (f'{domain} (Director OR VP OR "Vice President")', "Senior Mgmt")
+
+        # Executive
+        (f'site:linkedin.com/in "{company_token}" (Founder OR CEO OR Owner OR Principal)', "Exec"),
+
+        # Ops
+        (f'site:linkedin.com/in "{company_token}" ("Head of Operations" OR Logistics OR "Supply Chain")', "Ops"),
+
+        # Senior fallback
+        (f'site:linkedin.com/in "{company_token}" (Director OR VP)', "Senior")
     ]
-    
-    # Execute Strategies in order
-    for query, name in strategies:
-        result = execute_search_strategy(service, query, domain, name)
-        if result:
-            return result
-            
-    logging.warning(f"All search strategies failed for {domain}")
+
+    for query, label in strategies:
+
+        logging.info(f"🔎 LinkedIn Strategy [{label}] → {query}")
+
+        try:
+            res = service.cse().list(
+                q=query,
+                cx=GOOGLE_SEARCH_CX_PEOPLE,
+                num=5
+            ).execute()
+
+            items = res.get("items", [])
+
+            for item in items:
+                parsed = parse_linkedin_result(item, expected_company=company_token)
+                if parsed:
+                    logging.info(f"✓ Strategy [{label}] success: {parsed['first_name']} {parsed['last_name']}")
+                    return parsed
+
+        except Exception as e:
+            logging.warning(f"Strategy {label} failed: {e}")
+
     return None
 
 from .intelligence import clean_name_with_vertex
@@ -283,7 +221,7 @@ def search_decision_maker(company_name, company_url=None):
     # 2. Try by Provided Company Name (Already Cleaned)
     if company_name and len(company_name) > 2 and company_name.lower() != "home":
         logging.info(f"Trying LinkedIn X-Ray by Name: {company_name}")
-        query = f'"{company_name}" (Founder OR CEO OR "Head of Operations")'
+        query = f'site:linkedin.com/in "{company_name}" (Founder OR CEO OR "Head of Operations")'
         
         try:
             res = service.cse().list(q=query, cx=GOOGLE_SEARCH_CX_PEOPLE, num=1).execute()
@@ -298,7 +236,8 @@ def search_decision_maker(company_name, company_url=None):
             
             # 2b. Broader Fallback (If Founder/CEO search fails)
             logging.info(f"Primary name search failed for {company_name}. Trying broader roles (Director, Manager)...")
-            query_broad = f'"{company_name}" (Director OR Manager OR "Head of" OR VP OR Owner)'
+            query_broad = f'site:linkedin.com/in "{company_name}" (Director OR Manager OR VP OR Owner)'
+
             res_broad = service.cse().list(q=query_broad, cx=GOOGLE_SEARCH_CX_PEOPLE, num=1).execute()
             items_broad = res_broad.get('items', [])
             if items_broad:
@@ -330,25 +269,44 @@ def search_decision_maker(company_name, company_url=None):
 
     return None
 
-def parse_linkedin_result(item):
-    """Helper to parse a Google Custom Search Result for LinkedIn"""
+def parse_linkedin_result(item, expected_company=None):
+    """
+    Strict LinkedIn result parsing with identity validation.
+    """
+
     try:
-        title_snippet = item.get('title', '')
-        link = item.get('link')
-        
-        parts = re.split(r' [-|] ', title_snippet)
-        name = parts[0].strip() if parts else "Unknown"
-        name = name.replace(' | LinkedIn', '').replace('LinkedIn', '').strip()
-        
+        title_snippet = item.get("title", "")
+        link = item.get("link")
+        snippet = item.get("snippet", "").lower()
+
+        if not is_valid_linkedin_url(link):
+            return None
+
+        parts = re.split(r"[-|]", title_snippet)
+        name = parts[0].replace("LinkedIn", "").strip()
+
         if not is_valid_name(name):
             return None
-            
+
+        # 🔥 STRICT COMPANY MATCH
+        if expected_company:
+            company_clean = expected_company.lower().split()[0]
+
+            title_match = company_clean in title_snippet.lower()
+            snippet_match = company_clean in snippet
+
+            if not (title_match or snippet_match):
+                logging.warning(
+                    f"❌ LinkedIn mismatch: {name} not tied to {expected_company}"
+                )
+                return None
+
         job_title = parts[1].strip() if len(parts) > 1 else "Founder"
-        
-        name_parts = name.split(' ')
+
+        name_parts = name.split()
         first_name = name_parts[0]
         last_name = name_parts[-1] if len(name_parts) > 1 else ""
-        
+
         return {
             "first_name": first_name,
             "last_name": last_name,
@@ -356,6 +314,52 @@ def parse_linkedin_result(item):
             "email": None,
             "linkedin_url": link
         }
-    except:
+
+    except Exception as e:
+        logging.warning(f"LinkedIn parse failed: {e}")
         return None
 
+
+def search_person_linkedin(first_name=None, last_name=None, company=None, broad_search=False):
+
+    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_CX_PEOPLE:
+        return None
+
+    service = build("customsearch", "v1", developerKey=GOOGLE_SEARCH_API_KEY)
+
+    queries = []
+
+    # Exact search (person mode)
+    if first_name and last_name:
+        queries.append(
+            f'site:linkedin.com/in "{first_name} {last_name}" "{company}"'
+        )
+
+    # Broad search (company mode)
+    if broad_search and company:
+        queries.append(
+            f'site:linkedin.com/in "{company}" (Founder OR CEO OR Owner OR Director OR VP)'
+        )
+
+    for query in queries:
+
+        logging.info(f"🔎 Person LinkedIn search: {query}")
+
+        try:
+            res = service.cse().list(
+                q=query,
+                cx=GOOGLE_SEARCH_CX_PEOPLE,
+                num=5
+            ).execute()
+
+            items = res.get("items", [])
+
+            for item in items:
+                parsed = parse_linkedin_result(item, expected_company=company)
+                if parsed:
+                    return parsed
+
+        except Exception as e:
+            logging.warning(f"LinkedIn search failed: {e}")
+
+    return None

@@ -11,3 +11,5 @@ lxml
 pandas
 urllib3
 dnspython
+google-cloud-storage
+pandas

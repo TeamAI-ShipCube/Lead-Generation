@@ -13,6 +13,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") # Keep for backwards compat if need
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY") # Optional, for fallback
+BUCKET_NAME = os.getenv("BUCKET_NAME", "shipcube-leads-inbox")
 
 # Enhanced API Keys
 FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
@@ -20,12 +21,12 @@ APOLLO_API_KEY = os.getenv("APOLLO_API_KEY")
 BUILTWITH_API_KEY = os.getenv("BUILTWITH_API_KEY")
 
 # Limits
-DAILY_LEAD_TARGET = 10000  # Very high target - run continuously until manually stopped
+DAILY_LEAD_TARGET = 1000  # Very high target - run continuously until manually stopped
 GOOGLE_SEARCH_DAILY_LIMIT = 1000
 HUNTER_MONTHLY_LIMIT = 50
 
 # Quality Control
-MIN_QUALIFICATION_GRADE = 0  # Minimum grade to save lead (0-10). Set to 0 to save all leads, 6+ for quality filtering
+MIN_QUALIFICATION_GRADE = 1  # Minimum grade to save lead (0-10). Set to 0 to save all leads, 6+ for quality filtering
 
 # Google Sheets Integration
 ENABLE_SHEETS_SYNC = os.getenv("ENABLE_SHEETS_SYNC", "false").lower() == "true"

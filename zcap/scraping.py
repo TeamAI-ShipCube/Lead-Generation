@@ -3,7 +3,86 @@ import logging
 import time
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from urllib.parse import urljoin, urlparse
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
+PARKING_SIGNALS = [
+    "domain is for sale",
+    "buy this domain",
+    "this domain may be for sale",
+    "parked free",
+    "godaddy",
+    "sedo",
+    "namecheap",
+    "parkingcrew",
+    "dan.com",
+    "undeveloped",
+    "coming soon",
+    "website coming soon"
+]
+
+def looks_like_parked_site(text: str) -> bool:
+    if not text:
+        return True
+    t = text.lower()
+    return any(sig in t for sig in PARKING_SIGNALS)
+
+
+COMMERCE_SIGNALS = [
+    "shop", "store", "buy", "cart", "checkout",
+    "shipping", "delivery", "order", "products"
+]
+
+def looks_like_commerce_site(text: str) -> bool:
+    t = text.lower()
+    return any(sig in t for sig in COMMERCE_SIGNALS)
+
+def scrape_pages_with_single_browser(urls: dict):
+    """
+    Opens ONE browser and scrapes multiple pages.
+    Much lower memory than launching browser per URL.
+    """
+    results = {}
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                    "--disable-gpu"
+                ]
+            )
+
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 800}
+            )
+
+            # block heavy assets
+            context.route("**/*", lambda route, request:
+                route.abort() if request.resource_type in ["image", "font", "media"]
+                else route.continue_()
+            )
+
+            page = context.new_page()
+
+            for name, url in urls.items():
+                try:
+                    page.goto(url, timeout=20000, wait_until="domcontentloaded")
+                    text = page.inner_text("body")[:8000]
+                    results[name] = text
+                    logging.info(f"✓ {name}: {len(text)} chars")
+                except Exception as e:
+                    logging.warning(f"Playwright failed {url}: {e}")
+                    results[name] = None
+
+            browser.close()
+
+    except Exception as e:
+        logging.error(f"Playwright session failed: {e}")
+
+    return results
+    
 def scrape_with_playwright_enhanced(url, scroll_for_dynamic=True):
     """
     Enhanced Playwright scraper for modern dynamic websites.
@@ -20,11 +99,12 @@ def scrape_with_playwright_enhanced(url, scroll_for_dynamic=True):
             page.set_viewport_size({"width": 1920, "height": 1080})
             
             # Navigate with multiple wait strategies
-            page.goto(url, wait_until="domcontentloaded", timeout=20000)
+
+            page.goto(url, timeout=12000, wait_until="domcontentloaded")
             
             # Wait for network to be mostly idle (handles lazy loading)
             try:
-                page.wait_for_load_state("networkidle", timeout=10000)
+                page.wait_for_load_state("networkidle", timeout=6000)
             except:
                 pass  # Continue even if networkidle times out
             
@@ -99,7 +179,7 @@ def scrape_with_jina(url):
     }
     
     try:
-        response = requests.get(jina_url, headers=headers, timeout=30)
+        response = requests.get(jina_url, headers=headers, timeout=5)
         response.raise_for_status()
         text = response.text[:15000]
         
@@ -151,16 +231,31 @@ def scrape_website(url):
     else:
         logging.info(f"Playwright failed, trying Jina AI for homepage...")
         text = scrape_with_jina(url)
-        if text:
-            scraped_data["text"] = text
-            logging.info(f"✓ Homepage (Jina): {len(text)} chars")
-    
+        
+    if text:
+        scraped_data["text"] = text
+        logging.info(f"✓ Homepage (Jina): {len(text)} chars")
+
     # If homepage failed completely, return error
     if not scraped_data["text"]:
         scraped_data["error"] = "All scraping methods failed for homepage"
-        logging.error(f"✗ Both scrapers failed for {url}")
         return scraped_data
-    
+
+    # 🚫 Skip parked / placeholder sites
+    if looks_like_parked_site(scraped_data["text"]):
+        scraped_data["error"] = "Parked domain"
+        return scraped_data
+
+    # 🚫 Skip thin junk pages
+    if len(scraped_data["text"]) < 800:
+        scraped_data["error"] = "Thin content"
+        return scraped_data
+
+    # 🚫 Skip non-commerce sites
+    if not looks_like_commerce_site(scraped_data["text"]):
+        scraped_data["error"] = "No commerce signals"
+        return scraped_data
+
     # 2. ABOUT PAGES - Company info, team size, mission
     about_paths = ['/about', '/about-us', '/our-story', '/company', '/who-we-are']
     about_found = False

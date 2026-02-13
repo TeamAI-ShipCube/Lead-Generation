@@ -13,7 +13,15 @@ from google import auth
 
 # Scopes required for Google Sheets API
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-
+FIELDNAMES = [
+    "First Name","Last Name","Title","Email","LinkedIn URL","Company",
+    "Company Info","Qualification Grade","Why Good?","Pain_Point",
+    "Icebreaker","Status","Recent updates","Keyword",
+    "Employee Count","Annual Revenue","Company Size","Industry Tags",
+    "Social Media","Contact Details","Logistics Signals","Brand Vibe",
+    "Tech Stack","Product Profile","Customer Focus","Shipping Locations",
+    "Timestamp"
+]
 class SheetsSync:
     def __init__(self, spreadsheet_id, credentials):
         """
@@ -32,17 +40,7 @@ class SheetsSync:
     
     def init_sheet_headers(self, sheet_name='Sheet1'):
         try:
-            headers = [
-                "First Name", "Last Name", "Title", "Email",
-                "LinkedIn URL", "Company", "Company Info",
-                "Qualification Grade", "Why Good?", "Pain_Point",
-                "Icebreaker", "Status", "Recent updates", "Keyword",
-                "Employee Count", "Annual Revenue", "Company Size",
-                "Industry Tags", "Social Media", "Contact Details",
-                "Logistics Signals", "Brand Vibe", "Tech Stack",
-                "Product Profile", "Customer Focus", "Shipping Locations",
-                "Timestamp"
-            ]
+            headers = FIELDNAMES
             range_name = f"{sheet_name}!A1:AA1"
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id,
@@ -82,42 +80,16 @@ class SheetsSync:
             from datetime import datetime
             
             # Internal helper to ensure clean text formatting
-            def clean_val(val):
-                if val is None:
-                    return ""
-                # Convert to string and strip hidden whitespace/newline chars
-                return str(val).strip()
-            
-            # Prepare row data using the helper for every field
-            row = [
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                clean_val(lead_data.get("First Name")),
-                clean_val(lead_data.get("Last Name")),
-                clean_val(lead_data.get("Title")),
-                clean_val(lead_data.get("Email")),
-                clean_val(lead_data.get("LinkedIn URL")),
-                clean_val(lead_data.get("Company")),
-                clean_val(lead_data.get("Company Info")),
-                clean_val(lead_data.get("Qualification Grade")),
-                clean_val(lead_data.get("Why Good?")),
-                clean_val(lead_data.get("Pain_Point")),
-                clean_val(lead_data.get("Icebreaker")),
-                clean_val(lead_data.get("Status")),
-                clean_val(lead_data.get("Recent updates")),
-                clean_val(lead_data.get("Keyword")),
-                clean_val(lead_data.get("Employee Count")),
-                clean_val(lead_data.get("Annual Revenue")),
-                clean_val(lead_data.get("Company Size")),
-                clean_val(lead_data.get("Industry Tags")),
-                clean_val(lead_data.get("Social Media")),
-                clean_val(lead_data.get("Contact Details")),
-                clean_val(lead_data.get("Logistics Signals")),
-                clean_val(lead_data.get("Brand Vibe")),
-                clean_val(lead_data.get("Tech Stack")),
-                clean_val(lead_data.get("Product Profile")),
-                clean_val(lead_data.get("Customer Focus")),
-                clean_val(lead_data.get("Shipping Locations"))
-            ]
+            def clean_val(v):
+                return "" if v is None else str(v).strip()
+
+            lead_data = dict(lead_data)
+
+            if not lead_data.get("Timestamp"):
+                from datetime import datetime
+                lead_data["Timestamp"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            row = [clean_val(lead_data.get(col)) for col in FIELDNAMES]
             
             # Append to sheet (rest of the logic remains the same)
             body = {'values': [row]}
@@ -163,36 +135,9 @@ class SheetsSync:
             # Prepare rows
             rows = []
             for lead_data in leads_list:
-                row = [
-                    timestamp,
-                    lead_data.get("First Name", ""),
-                    lead_data.get("Last Name", ""),
-                    lead_data.get("Title", ""),
-                    lead_data.get("Email", ""),
-                    lead_data.get("LinkedIn URL", ""),
-                    lead_data.get("Company", ""),
-                    lead_data.get("Company Info", ""),
-                    lead_data.get("Qualification Grade", ""),
-                    lead_data.get("Why Good?", ""),
-                    lead_data.get("Pain_Point", ""),
-                    lead_data.get("Icebreaker", ""),
-                    lead_data.get("Status", ""),
-                    lead_data.get("Recent updates", ""),
-                    lead_data.get("Keyword", ""),
-                    lead_data.get("Employee Count", ""),
-                    lead_data.get("Annual Revenue", ""),
-                    lead_data.get("Company Size", ""),
-                    lead_data.get("Industry Tags", ""),
-                    lead_data.get("Social Media", ""),
-                    lead_data.get("Contact Details", ""),
-                    lead_data.get("Logistics Signals", ""),
-                    lead_data.get("Brand Vibe", ""),
-                    lead_data.get("Tech Stack", ""),
-                    lead_data.get("Product Profile", ""),
-                    lead_data.get("Customer Focus", ""),
-                    lead_data.get("Shipping Locations", "")
-                ]
-                rows.append(row)
+                if not lead_data.get("Timestamp"):
+                    lead_data["Timestamp"] = timestamp
+                rows.append([lead_data.get(col,"") for col in FIELDNAMES])
             
             # Batch append
             body = {'values': rows}
@@ -258,3 +203,40 @@ def sync_lead_to_sheet(lead_data):
     if sheets:
         return sheets.sync_lead(lead_data)
     return None
+
+def sync_enriched_lead_to_sheet(lead_data):
+    """
+    Writes enrichment output to Enrichment tab
+    """
+    sheets = get_sheets_sync()
+    if sheets:
+        sheets.init_sheet_headers(sheet_name="Enrichment")
+        return sheets.sync_lead(lead_data, sheet_name="Enrichment")
+    return None
+
+def get_enrichment_sheet_rows(sheet_name="Enrichment"):
+    sheets = get_sheets_sync()
+    if not sheets:
+        return []
+
+    try:
+        result = sheets.service.spreadsheets().values().get(
+            spreadsheetId=sheets.spreadsheet_id,
+            range=f"{sheet_name}!A:AA"
+        ).execute()
+
+        values = result.get("values", [])
+        if not values:
+            return []
+
+        headers = values[0]
+        rows = []
+
+        for r in values[1:]:
+            rows.append(dict(zip(headers, r)))
+
+        return rows
+
+    except Exception as e:
+        logging.error(f"Failed reading enrichment sheet rows: {e}")
+        return []

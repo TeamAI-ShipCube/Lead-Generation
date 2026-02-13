@@ -16,4 +16,4 @@ RUN playwright install chromium --with-deps
 
 COPY . .
 
-CMD ["python", "-m", "zcap.run"]
+CMD ["python", "-m", "zcap.entrypoint"]
