@@ -334,9 +334,12 @@ def run_enrichment():
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
 
-        if mode == "company_mode":
+        futures = []
 
-            futures = []
+        # -----------------------------
+        # 🟢 Company Mode
+        # -----------------------------
+        if mode == "company_mode":
 
             for row in rows:
                 company = extract_company_from_row(row).lower()
@@ -349,9 +352,38 @@ def run_enrichment():
                     pool.submit(generate_from_company_row, row)
                 )
 
+        # -----------------------------
+        # 🔵 Person Mode
+        # -----------------------------
+        elif mode == "person_mode":
+
+            for row in rows:
+                company = extract_company_from_row(row).lower()
+
+                if company in processed_companies:
+                    logging.info(f"⏭️ Skipping already processed company: {company}")
+                    continue
+
+                # Convert person CSV format into expected structure
+                processing_row = {
+                    "Person Name": f"{row.get('First Name','')} {row.get('Last Name','')}".strip(),
+                    "Job Title": row.get("Title", ""),
+                    "Company name": row.get("Company", ""),
+                    "LinkedIn URL": row.get("LinkedIn URL", ""),
+                    "Discovered Website": discover_company_website(row.get("Company", ""))
+                }
+
+                futures.append(
+                    pool.submit(enrich_row, processing_row)
+                )
+
         else:
+            logging.error("Unsupported CSV mode detected.")
             return
 
+        # -----------------------------
+        # Sync Results
+        # -----------------------------
         for future in as_completed(futures):
             result = future.result()
 
@@ -360,7 +392,6 @@ def run_enrichment():
 
             logging.info(f"📤 Syncing to sheet: {result.get('Company')}")
             sync_enriched_lead_to_sheet(result)
-
             out_rows.append(result)
 
     if out_rows:
